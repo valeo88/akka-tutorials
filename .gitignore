@@ -99,5 +99,6 @@ project/plugins/project/
 *.log
 .bsp
 .idea
+*.iml
 
 # End of https://www.gitignore.io/api/sbt,scala,intellij
