@@ -97,5 +97,7 @@ project/plugins/project/
 ### Scala ###
 *.class
 *.log
+.bsp
+.idea
 
 # End of https://www.gitignore.io/api/sbt,scala,intellij
