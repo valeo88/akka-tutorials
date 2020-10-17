@@ -1,6 +1,7 @@
 package essentials.actors
 
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
+import essentials.actors.ActorCapabilities.Counter.{Decrement, Increment, Print}
 
 object ActorCapabilities extends App {
 
@@ -54,4 +55,107 @@ object ActorCapabilities extends App {
   // forwarding = sending a message with ORIGINAL sender
   case class WirelessMessage(content: String, ref: ActorRef)
   alice ! WirelessMessage("Hi", bob)
+
+  /**
+   * Exercises
+   *
+   * 1. a Counter actor
+   *   - Increment
+   *   - Decrement
+   *   - Print
+   *
+   * 2. a Bank account as an actor
+   *   receives
+   *   - Deposit an amount
+   *   - Withdraw an amount
+   *   - Statement
+   *   replies with
+   *   - Success
+   *   - Failure
+   *
+   *   interact with some other kind of actor
+   */
+
+  // Counter
+  // Using DOMAINS
+  object Counter {
+    case class Increment(amount: Int = 1)
+    case class Decrement(amount: Int = 1)
+    case object Print
+  }
+
+  class Counter extends Actor {
+    var counter = 0
+
+    override def receive: Receive = {
+      case Increment(amount) => counter += amount
+      case Decrement(amount) => counter -= amount
+      case Print => println(s"[${self.path}] has value: ${counter}")
+    }
+  }
+
+  val counter = system.actorOf(Props[Counter], "counter")
+  counter ! Increment(10)
+  counter ! Decrement(4)
+  counter ! Increment
+  counter ! Print
+
+  // Bank account
+  // DOMAIN
+  object BankAccount {
+    trait BankAccountOperation
+    case class Deposit(amount: Int) extends BankAccountOperation
+    case class Withdraw(amount: Int) extends BankAccountOperation
+    case object Statement extends BankAccountOperation
+
+    case class TransactionSuccess(message: String)
+    case class TransactionFailure(message: String)
+  }
+  import BankAccount._
+
+  class BankAccount extends Actor {
+    var balance = 0
+
+    override def receive: Receive = {
+      case Deposit(amount) =>
+        if (amount < 0) sender() ! TransactionFailure("amount can't be negative")
+        else {
+          balance += amount
+          sender() ! TransactionSuccess(s"Deposit ${amount} on balance, result=${balance}")
+        }
+      case Withdraw(amount) =>
+        if (amount < 0) sender() ! TransactionFailure("amount can't be negative")
+        else if (amount > balance) sender() ! TransactionFailure("Insufficient money on balance")
+        else {
+          balance -= amount
+          sender() ! TransactionSuccess(s"Withdraw ${amount} from balance, result=${balance}")
+        }
+      case Statement => sender() ! TransactionSuccess(s"Current balance is ${balance}")
+    }
+
+  }
+
+  // Person to interact with bank account
+  object BankStuff {
+    case class CommandToBankAccount(operation: BankAccountOperation, bankAccount: ActorRef)
+  }
+  import BankStuff._
+
+  class BankStuff extends Actor {
+    override def receive: Receive = {
+      case TransactionSuccess(message) => println(s"[${sender()}] replied with success: ${message}")
+      case TransactionFailure(message) => println(s"[${sender()}] replied with failure: ${message}")
+      case CommandToBankAccount(operation, ref) => ref ! operation
+    }
+  }
+
+  // test bank account
+  val bankAccount = system.actorOf(Props[BankAccount], "bankAccount")
+  val bankStuff = system.actorOf(Props[BankStuff], "bankStuff")
+
+  // messages send in this order -> queue
+  bankStuff ! CommandToBankAccount(Deposit(1000), bankAccount)
+  bankStuff ! CommandToBankAccount(Withdraw(2000), bankAccount)
+  bankStuff ! CommandToBankAccount(Statement, bankAccount)
+
 }
