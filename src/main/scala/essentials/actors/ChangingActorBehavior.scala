@@ -88,4 +88,33 @@ object ChangingActorBehavior extends App {
   val mom = system.actorOf(Props[Mom], "mom")
 
   mom ! MomStart(statelessFussyKid)
+
+  // Exercise #1: Counter with context.become and no MUTABLE STATE
+  object Counter {
+    case class Increment(amount: Int = 1)
+    case class Decrement(amount: Int = 1)
+    case object Print
+  }
+  import Counter._
+
+  class Counter extends Actor {
+    // save state as function param in call stack
+    override def receive: Receive = countReceive(0)
+
+    def countReceive(currentCount: Int): Receive = {
+      case Increment(amount) =>
+        println(s"[countReceive($currentCount)] incrementing")
+        context.become(countReceive(currentCount + amount))
+      case Decrement(amount) =>
+        println(s"[countReceive($currentCount)] decrementing")
+        context.become(countReceive(currentCount - amount))
+      case Print => println(s"[countReceive($currentCount)] my current count is $currentCount")
+    }
+  }
+
+  val counter = system.actorOf(Props[Counter], "counter")
+  counter ! Increment(10)
+  counter ! Decrement(4)
+  counter ! Increment()
+  counter ! Print
 }
