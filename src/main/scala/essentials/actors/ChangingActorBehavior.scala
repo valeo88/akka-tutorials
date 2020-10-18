@@ -98,7 +98,7 @@ object ChangingActorBehavior extends App {
   import Counter._
 
   class Counter extends Actor {
-    // save state as function param in call stack
+    // save state by call new handler with next state as parameter(-s)
     override def receive: Receive = countReceive(0)
 
     def countReceive(currentCount: Int): Receive = {
@@ -117,4 +117,65 @@ object ChangingActorBehavior extends App {
   counter ! Decrement(4)
   counter ! Increment()
   counter ! Print
+
+  // Exercise 2: simple voting system
+  case class Vote(candidate: String)
+  case object VoteStatusRequest
+  case class VoteStatusReply(candidate: Option[String])
+  class Citizen extends Actor {
+    override def receive: Receive = state(None)
+
+    def state(votingState: Option[String]): Receive = {
+      case VoteStatusRequest =>
+        println(s"[$self] received vote status request, candidate=${votingState.getOrElse("not voted")}")
+        sender() ! VoteStatusReply(votingState)
+      case Vote(candidate) =>
+        if (votingState.isEmpty) {
+          println(s"[$self] voted for $candidate")
+          context.become(state(Option(candidate)))
+        }
+    }
+  }
+
+  case class AggregateVotes(citizens: Set[ActorRef])
+  class VoteAggregator extends Actor {
+    override def receive: Receive = awaitingCommand
+
+    def awaitingCommand: Receive = {
+      case AggregateVotes(citizens) =>
+        citizens.foreach(_ ! VoteStatusRequest)
+        context.become(awaitingStatuses(citizens, List()))
+    }
+
+    def awaitingStatuses(stillWaiting: Set[ActorRef], results: List[String]): Receive = {
+      case VoteStatusReply(None) =>
+        println(s"[aggregator] ${sender()} not yet voted, retry")
+        sender() ! VoteStatusRequest // may be infinite loop!
+      case VoteStatusReply(Some(candidate)) =>
+        println(s"[aggregator] recevied vote status reply from ${sender()}")
+        val updatedStillWaiting = stillWaiting - sender()
+        val updatedResults = candidate +: results
+        context.become(awaitingStatuses(updatedStillWaiting, updatedResults))
+        if (updatedStillWaiting.isEmpty) {
+          // aggregate and print results
+          updatedResults.groupBy(identity).view.mapValues(_.size)
+            .foreach(pair => println(pair._1 + " -> " + pair._2))
+        }
+    }
+  }
+
+  val alice = system.actorOf(Props[Citizen])
+  val bob = system.actorOf(Props[Citizen])
+  val charlie = system.actorOf(Props[Citizen])
+  val daniel = system.actorOf(Props[Citizen])
+
+  alice ! Vote("Martin")
+  bob ! Vote("Martin")
+  charlie ! Vote("Mag")
+  daniel ! Vote("Carter")
+
+  val voteAggregator = system.actorOf(Props[VoteAggregator])
+
+  // need print voting results
+  voteAggregator ! AggregateVotes(Set(alice, bob, charlie, daniel))
 }
