@@ -8,6 +8,7 @@ import akka.pattern.{BackoffOpts, BackoffSupervisor}
 
 import scala.concurrent.duration._
 import scala.io.Source
+import scala.language.postfixOps
 
 /**
  * Useful in cases where actors work with resources which can be anavailable some time.
